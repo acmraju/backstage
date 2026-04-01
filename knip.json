@@ -1,0 +1,26 @@
+{
+  "$schema": "https://unpkg.com/knip@3/schema.json",
+  "ignore": [
+    "**/setupTests.ts",
+    "**/.eslintrc.js",
+    "**/config.d.ts",
+    "packages/backend/src/instrumentation.js"
+  ],
+  "ignoreDependencies": [
+    "better-sqlite3",
+    "app",
+    "@backstage/cli-defaults",
+    "@testing-library/jest-dom",
+    "webpack-env",
+    "lint-staged",
+    "@types/lodash",
+    "@types/d3",
+    "@types/glob",
+    "@opentelemetry/auto-instrumentations-node",
+    "@opentelemetry/exporter-prometheus",
+    "@opentelemetry/exporter-trace-otlp-http",
+    "@opentelemetry/sdk-node",
+    "@opentelemetry/sdk-trace-node"
+  ],
+  "ignoreBinaries": ["docker-compose"]
+}

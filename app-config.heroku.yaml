@@ -1,0 +1,87 @@
+app:
+  baseUrl: https://demo.backstage.io
+
+backend:
+  baseUrl: https://demo.backstage.io
+  listen:
+    # Heroku will assign the port dynamically so we want to just pass that in as is
+    port: ${PORT}
+  auth:
+    dangerouslyDisableDefaultAuthPolicy: true
+    externalAccess:
+      - type: legacy
+        options:
+          secret: ${BACKEND_AUTH_KEY}
+          subject: legacy-secret
+      - type: static
+        options:
+          token: ${MCP_TOKEN}
+          subject: mcp-clients
+        accessRestrictions:
+          - plugin: mcp-actions
+          - plugin: catalog
+
+auth:
+  environment: production
+  experimentalExtraAllowedOrigins:
+    - https://pr-+(0|1|2|3|4|5|6|7|8|9)-deployment-+(0|1|2|3|4|5|6|7|8|9)-backstage.app.uffizzi.com
+  providers:
+    guest:
+      userEntityRef: user:default/guest
+      dangerouslyAllowOutsideDevelopment: true
+    github:
+      production:
+        clientId: ${GITHUB_PRODUCTION_CLIENT_ID}
+        clientSecret: ${GITHUB_PRODUCTION_CLIENT_SECRET}
+
+techdocs:
+  sanitizer:
+    allowedIframeHosts:
+      - www.youtube.com
+  builder: 'external'
+  publisher:
+    type: 'googleGcs'
+    googleGcs:
+      credentials: ${TECHDOCS_GCS_CREDENTIALS}
+      projectId: ${TECHDOCS_GCS_PROJECT_ID}
+      bucketName: ${TECHDOCS_GCS_BUCKET}
+
+kubernetes:
+  serviceLocatorMethod:
+    type: 'multiTenant'
+  clusterLocatorMethods:
+    - type: 'config'
+      clusters:
+        - name: demo-cluster
+          url: ${K8S_URL}
+          authProvider: 'serviceAccount'
+          caData: ${K8S_CA_DATA}
+          serviceAccountToken: ${KUBERNETES_SERVICE_ACCOUNT_TOKEN}
+
+catalog:
+  providers:
+    github:
+      backstageRepo:
+        organization: 'backstage'
+        catalogPath: '**/catalog-info.yaml'
+        filters:
+          repository: 'backstage'
+        schedule:
+          frequency: { days: 1 }
+          timeout: { minutes: 5 }
+      communityPluginsRepo:
+        organization: 'backstage'
+        catalogPath: '**/catalog-info.yaml'
+        filters:
+          repository: 'community-plugins'
+        schedule:
+          frequency: { days: 1 }
+          timeout: { minutes: 5 }
+
+events:
+  http:
+    topics:
+      - github
+  modules:
+    github:
+      webhookSecret: ${GITHUB_WEBHOOK_SECRET}

@@ -1,0 +1,89 @@
+{
+  "name": "root",
+  "version": "1.0.0",
+  "private": true,
+  "engines": {
+    "node": "22 || 24"
+  },
+  "scripts": {
+    "start": "backstage-cli repo start",
+    "start:app-migrated": "backstage-cli repo start app-migrated backend",
+    "start:otel-prerequisites": "docker-compose -f ./open-telemetry/docker-compose.yaml up",
+    "build:backend": "yarn workspace backend build",
+    "build:all": "backstage-cli repo build --all",
+    "build-image": "yarn workspace backend build-image",
+    "tsc": "tsc",
+    "tsc:full": "tsc --skipLibCheck false --incremental false",
+    "clean": "backstage-cli repo clean",
+    "test": "backstage-cli repo test",
+    "test:all": "backstage-cli repo test --coverage",
+    "test:e2e": "playwright test",
+    "fix": "backstage-cli repo fix",
+    "lint": "backstage-cli repo lint --since origin/master",
+    "lint:all": "backstage-cli repo lint",
+    "prettier:check": "prettier --check .",
+    "new": "backstage-cli new",
+    "knip": "knip",
+    "prepare": "husky",
+    "postinstall": "husky || true"
+  },
+  "backstage": {
+    "cli": {
+      "new": {
+        "globals": {
+          "license": "Apache-2.0"
+        }
+      }
+    }
+  },
+  "workspaces": {
+    "packages": [
+      "packages/*",
+      "plugins/*"
+    ]
+  },
+  "resolutions": {
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "@octokit/rest": "^22.0.1",
+    "@octokit/plugin-paginate-rest": "^14.0.0",
+    "@octokit/plugin-rest-endpoint-methods": "^17.0.0",
+    "nan": "2.25.0"
+  },
+  "devDependencies": {
+    "@backstage/cli": "backstage:^",
+    "@backstage/cli-defaults": "backstage:^",
+    "@backstage/e2e-test-utils": "backstage:^",
+    "@jest/environment-jsdom-abstract": "^30.2.0",
+    "@playwright/test": "^1.32.3",
+    "@types/jest": "^30.0.0",
+    "@types/lodash": "^4.14.202",
+    "@types/node": "^24.0.0",
+    "eslint": "^8.6.0",
+    "fs-extra": "11.3.4",
+    "husky": "^9.0.0",
+    "jest": "^30.2.0",
+    "jsdom": "^27.3.0",
+    "knip": "^5.0.0",
+    "lint-staged": "^16.0.0",
+    "node-fetch": "^2.6.7",
+    "prettier": "^3.0.0",
+    "typescript": "~5.9.0"
+  },
+  "prettier": "@backstage/cli/config/prettier",
+  "lint-staged": {
+    "*.{js,jsx,ts,tsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,md,yaml,yml}": [
+      "prettier --write"
+    ]
+  },
+  "jest": {
+    "transformModules": [
+      "@asyncapi/react-component"
+    ]
+  },
+  "packageManager": "yarn@4.5.0"
+}
