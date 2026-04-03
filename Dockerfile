@@ -36,9 +36,6 @@ COPY --chown=node:node app-config*.yaml ./
 COPY --chown=node:node backstage.json ./
 COPY --chown=node:node packages/backend/src/instrumentation.js ./
 
-# This will include the examples, if you don't need these simply remove this line
-COPY --chown=node:node examples ./examples
-
 
 RUN printf "[credential \"https://code.siemens.com\"]\n username = __token__\n" >> ~/.gitconfig \
     && git config --global credential.helper store \
