@@ -15,14 +15,12 @@ WORKDIR /app
 COPY --chown=node:node .yarn ./.yarn
 COPY --chown=node:node .yarnrc.yml  ./
 COPY --chown=node:node backstage.json ./
-COPY --chown=node:node init-husky.js .
 
 # Copy repo skeleton first, to avoid unnecessary docker cache invalidation.
 # The skeleton contains the package.json of each package in the monorepo,
 # and along with yarn.lock and the root package.json, that's enough to run yarn install.
 
 COPY --chown=node:node yarn.lock package.json ./
-COPY --chown=node:node packages/backend/dist/skeleton.tar.gz /tmp/app/
 RUN tar xzf /tmp/app/skeleton.tar.gz && rm -rf /tmp/skeleton.tar.gz
 
 RUN corepack enable && \
@@ -33,23 +31,14 @@ RUN corepack enable && \
     find node_modules -type f -name "docker-compose.yml" -delete && \
     find node_modules -type f -name "Dockerfile" -delete
 
-# Then copy the rest of the backend bundle, along with any other files we might want.
-COPY --chown=node:node packages/backend/dist/bundle.tar.gz /tmp/app/
-RUN tar xzf /tmp/app/bundle.tar.gz && rm -rf /tmp/bundle.tar.gz
-
 # Copy any other files that we need at runtime
 COPY --chown=node:node app-config*.yaml ./
-COPY --chown=node:node rbac-policies.csv ./
-COPY --chown=node:node scoped-policies.yaml ./
 COPY --chown=node:node backstage.json ./
 COPY --chown=node:node packages/backend/src/instrumentation.js ./
 
 # This will include the examples, if you don't need these simply remove this line
 COPY --chown=node:node examples ./examples
 
-#UnSet YARN proxy
-ENV YARN_HTTP_PROXY=
-ENV YARN_HTTPS_PROXY=
 
 RUN printf "[credential \"https://code.siemens.com\"]\n username = __token__\n" >> ~/.gitconfig \
     && git config --global credential.helper store \
