@@ -1,9 +1,7 @@
 FROM node:24-trixie-slim@sha256:8c8f12cedb96c3b59642cf30d713943c2b223990c9919b96a141681f62e6e292 AS packages
 
 # Set environment variables
-ENV YARN_HTTP_PROXY=$http_proxy \
-    YARN_HTTPS_PROXY=$http_proxy \
-    PYTHON=/usr/bin/python3 \
+ENV PYTHON=/usr/bin/python3 \
     NODE_ENV=production \
     NODE_OPTIONS="--no-node-snapshot"
 
