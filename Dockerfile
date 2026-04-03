@@ -21,7 +21,6 @@ COPY --chown=node:node backstage.json ./
 # and along with yarn.lock and the root package.json, that's enough to run yarn install.
 
 COPY --chown=node:node yarn.lock package.json ./
-RUN tar xzf /tmp/app/skeleton.tar.gz && rm -rf /tmp/skeleton.tar.gz
 
 RUN corepack enable && \
     yarn workspaces focus --all --production && \
