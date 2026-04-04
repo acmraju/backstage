@@ -192,26 +192,26 @@ jobs:
   #           -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
   #           -Dsonar.coverage.exclusions=**/__tests__/**,**/*.test.ts,**/*.test.tsx,**/*.spec.ts,**/*.spec.tsx,**/index.ts,**/types.ts,**/*.d.ts,**/setupTests.ts,**/module.ts
 
-  # yarn-audit:
-  #   name: yarn audit
-  #   if: ${{ vars.CI_ENABLE_YARN_AUDIT != 'false' }}
-  #   runs-on: ubuntu-latest
-  #   continue-on-error: true
-  #   steps:
-  #     - name: Checkout
-  #       uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6
+  yarn-audit:
+    name: yarn audit
+    if: ${{ vars.CI_ENABLE_YARN_AUDIT != 'false' }}
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6
 
-  #     - name: Setup Node.js
-  #       uses: actions/setup-node@v4
-  #       with:
-  #         node-version: 22
-  #         cache: yarn
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: yarn
 
-  #     - name: Enable corepack
-  #       run: corepack enable
+      - name: Enable corepack
+        run: corepack enable
 
-  #     - name: Install dependencies
-  #       run: yarn install --immutable --mode=skip-build
+      - name: Install dependencies
+        run: yarn install --immutable --mode=skip-build
 
-  #     - name: Audit high severity vulnerabilities
-  #       run: yarn npm audit --all --recursive --severity high --no-deprecations
+      - name: Audit high severity vulnerabilities
+        run: yarn npm audit --all --recursive --severity high --no-deprecations
