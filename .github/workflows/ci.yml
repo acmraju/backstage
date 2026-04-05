@@ -138,7 +138,7 @@ jobs:
 
   lint-runtime-image:
     name: lint runtime image
-    if: ${{ vars.CI_ENABLE_DOCKLE != 'false' && vars.CI_DOCKER_PUSH == 'true' }}
+    if: ${{ vars.CI_ENABLE_DOCKLE != 'false' }}
     needs:
       - docker-build
     runs-on: ubuntu-latest
