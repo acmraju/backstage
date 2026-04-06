@@ -96,6 +96,9 @@ jobs:
     needs:
       - build
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     outputs:
       image-ref: ${{ steps.meta.outputs.images }}
       image-tag: ${{ steps.vars.outputs.tag }}
@@ -163,6 +166,8 @@ jobs:
 
   prepare-env:
     runs-on: ubuntu-latest
+    needs:
+      - docker-build
     outputs:
       env: ${{ steps.set.outputs.env }}
       dest_tag: ${{ steps.set.outputs.dest_tag }}
