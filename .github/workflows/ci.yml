@@ -97,7 +97,9 @@ jobs:
       - build
     runs-on: ubuntu-latest
     outputs:
-      image-ref: ${{ steps.meta.outputs.tags }}
+      image-ref: ${{ steps.meta.outputs.images }}
+      image-tag: ${{ steps.vars.outputs.tag }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6
@@ -106,12 +108,22 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to GHCR
-        if: ${{ vars.CI_DOCKER_PUSH == 'true' && github.event_name == 'push' }}
+        if: ${{ vars.CI_DOCKER_PUSH == 'true' }}
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Prepare image tag
+        id: vars
+        run: |
+          TAG="${{ github.ref_name }}"
+
+          # sanitize: replace / and uppercase
+          TAG=$(echo "$TAG" | tr '/' '-' | tr '[:upper:]' '[:lower:]')
+
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
 
       - name: Docker metadata
         id: meta
@@ -119,7 +131,7 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository }}/backstage
           tags: |
-            type=ref,event=branch
+            type=raw,value=${{ steps.vars.outputs.tag }}
             type=sha
 
       - name: Build (and optionally push)
@@ -127,14 +139,12 @@ jobs:
         with:
           context: .
           file: Dockerfile
-          push: ${{ vars.CI_DOCKER_PUSH == 'true' && github.event_name == 'push' }}
+          push: ${{ vars.CI_DOCKER_PUSH == 'true' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             YARN_ENABLE_GLOBAL_CACHE=false
             YARN_CACHE_FOLDER=/tmp/app/.yarn/cache
-            YARN_HTTP_PROXY=${{ secrets.CODE_PROXY }}
-            YARN_HTTPS_PROXY=${{ secrets.CODE_PROXY }}
 
   lint-runtime-image:
     name: lint runtime image
@@ -145,11 +155,67 @@ jobs:
     steps:
       - name: Run Dockle against pushed image
         run: |
-          IMAGE="ghcr.io/${{ github.repository }}/backstage:${{ github.ref_name }}"
+          IMAGE="${{ needs.docker-build.outputs.image-ref + ":" + needs.docker-build.outputs.image-tag }}"
           docker run --rm \
             -e DOCKLE_ACCEPT_FILES=.env,settings.py \
             goodwithtech/dockle:latest \
             "$IMAGE"
+
+  prepare-env:
+    runs-on: ubuntu-latest
+    outputs:
+      env: ${{ steps.set.outputs.env }}
+      dest_tag: ${{ steps.set.outputs.dest_tag }}
+
+    steps:
+      - name: Determine environment
+        id: set
+        run: |
+          echo "Event: ${{ github.event_name }}"
+
+          # Default values
+          ENV=""
+          DEST_TAG=""
+
+          # 1. Tag → prod
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            ENV="prod"
+            DEST_TAG="${{ github.ref_name }}"
+
+          # 2. Main branch → qa
+          elif [[ "${{ github.ref_name }}" == "main" && "${{ github.event_name }}" == "push" ]]; then
+            ENV="qa"
+            DEST_TAG="qa"
+
+          # 3. PR → devX from label
+          elif [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            labels="${{ join(github.event.pull_request.labels.*.name, ' ') }}"
+            count=0
+
+            for label in $labels; do
+              if [[ "$label" =~ ^dev[0-9]+$ ]]; then
+                ENV="$label"
+                DEST_TAG="$label"
+                count=$((count+1))
+              fi
+            done
+
+            if [ "$count" -eq 0 ]; then
+              echo "❌ No dev label found"
+              exit 1
+            fi
+
+            if [ "$count" -gt 1 ]; then
+              echo "❌ Multiple dev labels found"
+              exit 1
+            fi
+          fi
+
+          echo "ENV=$ENV"
+          echo "DEST_TAG=$DEST_TAG"
+
+          echo "env=$ENV" >> $GITHUB_OUTPUT
+          echo "dest_tag=$DEST_TAG" >> $GITHUB_OUTPUT
 
   # scan-sonarqube:
   #   name: sonar scan
