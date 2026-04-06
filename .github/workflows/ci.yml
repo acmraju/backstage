@@ -155,7 +155,7 @@ jobs:
     steps:
       - name: Run Dockle against pushed image
         run: |
-          IMAGE="${{ needs.docker-build.outputs.image-ref + ":" + needs.docker-build.outputs.image-tag }}"
+          IMAGE="${{ format('{0}:{1}', needs.docker-build.outputs.image-ref, needs.docker-build.outputs.image-tag) }}"
           docker run --rm \
             -e DOCKLE_ACCEPT_FILES=.env,settings.py \
             goodwithtech/dockle:latest \
