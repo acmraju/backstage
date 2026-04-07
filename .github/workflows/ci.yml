@@ -100,7 +100,7 @@ jobs:
       contents: read
       packages: write
     outputs:
-      image-ref: ${{ steps.meta.outputs.images }}
+      image-ref: ${{ steps.vars.outputs.image }}
       image-tag: ${{ steps.vars.outputs.tag }}
 
     steps:
@@ -126,6 +126,7 @@ jobs:
           # sanitize: replace / and uppercase
           TAG=$(echo "$TAG" | tr '/' '-' | tr '[:upper:]' '[:lower:]')
 
+          echo "image=ghcr.io/${{ github.repository }}/backstage" >> $GITHUB_OUTPUT
           echo "tag=$TAG" >> $GITHUB_OUTPUT
 
       - name: Docker metadata
