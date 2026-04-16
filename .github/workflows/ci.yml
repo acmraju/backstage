@@ -1,0 +1,289 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# env:
+#   YARN_ENABLE_GLOBAL_CACHE: false
+#   YARN_CACHE_FOLDER: .yarn/cache
+
+
+jobs:
+  # gitleaks:
+  #   name: gitleaks
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Checkout (full history for leak scan)
+  #       uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6
+  #       with:
+  #         fetch-depth: 0
+
+  #     - name: Run gitleaks
+  #       uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 #v2.3.9
+  #       env:
+  #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  linters:
+    name: linters
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6
+
+      - name: Commitlint
+        uses: wagoid/commitlint-github-action@b948419dd99f3fd78a6548d48f94e3df7f6bf3ed #@v6
+        with:
+          configFile: commitlint.config.mjs
+
+      - name: Hadolint
+        uses: hadolint/hadolint-action@2332a7b74a6de0dda2e2221d575162eba76ba5e5 #v3.3.0
+        with:
+          dockerfile: Dockerfile
+
+  build:
+    name: build and test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f #v6.3.0
+        with:
+          node-version: 24
+          cache: yarn
+
+      - name: Enable corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: TypeScript compile
+        run: yarn tsc
+
+      - name: Build backend
+        run: yarn build:backend
+
+      - name: Upload backend artifact
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f #v7.0.0
+        with:
+          name: backend-dist
+          path: packages/backend/dist
+          retention-days: 7
+      
+      - name: Run tests with coverage
+        run: yarn test --coverage
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f #v7.0.0
+        with:
+          name: coverage
+          path: coverage/
+          retention-days: 7
+
+  docker-build:
+    name: docker build
+    needs:
+      - build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image-ref: ${{ steps.vars.outputs.image }}
+      image-tag: ${{ steps.vars.outputs.tag }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        if: ${{ vars.CI_DOCKER_PUSH == 'true' }}
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Prepare image tag
+        id: vars
+        run: |
+          TAG="${{ github.ref_name }}"
+
+          # sanitize: replace / and uppercase
+          TAG=$(echo "$TAG" | tr '/' '-' | tr '[:upper:]' '[:lower:]')
+
+          echo "image=ghcr.io/${{ github.repository }}/backstage" >> $GITHUB_OUTPUT
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}/backstage
+          tags: |
+            type=raw,value=${{ steps.vars.outputs.tag }}
+            type=sha
+
+      - name: Build (and optionally push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: ${{ vars.CI_DOCKER_PUSH == 'true' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            YARN_ENABLE_GLOBAL_CACHE=false
+            YARN_CACHE_FOLDER=/tmp/app/.yarn/cache
+
+  lint-runtime-image:
+    name: lint runtime image
+    if: ${{ vars.CI_ENABLE_DOCKLE != 'false' }}
+    needs:
+      - docker-build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run Dockle against pushed image
+        run: |
+          IMAGE="${{ format('{0}:{1}', needs.docker-build.outputs.image-ref, needs.docker-build.outputs.image-tag) }}"
+          docker run --rm \
+            -e DOCKLE_ACCEPT_FILES=.env,settings.py \
+            goodwithtech/dockle:latest \
+            "$IMAGE"
+
+  prepare-env:
+    runs-on: ubuntu-latest
+    needs:
+      - docker-build
+    outputs:
+      env: ${{ steps.set.outputs.env }}
+      dest_tag: ${{ steps.set.outputs.dest_tag }}
+
+    steps:
+      - name: Determine environment
+        id: set
+        run: |
+          echo "Event: ${{ github.event_name }}"
+
+          # Default values
+          ENV=""
+          DEST_TAG=""
+
+          # 1. Tag → prod
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            ENV="prod"
+            DEST_TAG="${{ github.ref_name }}"
+
+          # 2. Main branch → qa
+          elif [[ "${{ github.ref_name }}" == "main" && "${{ github.event_name }}" == "push" ]]; then
+            ENV="qa"
+            DEST_TAG="qa"
+
+          # 3. PR → devX from label
+          elif [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            labels="${{ join(github.event.pull_request.labels.*.name, ' ') }}"
+            count=0
+
+            for label in $labels; do
+              if [[ "$label" =~ ^dev[0-9]+$ ]]; then
+                ENV="$label"
+                DEST_TAG="$label"
+                count=$((count+1))
+              fi
+            done
+
+            if [ "$count" -eq 0 ]; then
+              echo "❌ No dev label found"
+              exit 1
+            fi
+
+            if [ "$count" -gt 1 ]; then
+              echo "❌ Multiple dev labels found"
+              exit 1
+            fi
+          fi
+
+          echo "ENV=$ENV"
+          echo "DEST_TAG=$DEST_TAG"
+
+          echo "env=$ENV" >> $GITHUB_OUTPUT
+          echo "dest_tag=$DEST_TAG" >> $GITHUB_OUTPUT
+
+  # scan-sonarqube:
+  #   name: sonar scan
+  #   if: ${{ vars.CI_ENABLE_SONAR != 'false' && (github.ref_name == 'main' || startsWith(github.ref, 'refs/tags/')) }}
+  #   needs:
+  #     - test
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Checkout
+  #       uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6
+  #       with:
+  #         fetch-depth: 0
+
+  #     - name: Download coverage artifact
+  #       uses: actions/download-artifact@v4
+  #       with:
+  #         name: coverage
+  #         path: coverage
+
+  #     - name: Compute sonar project version
+  #       shell: bash
+  #       run: |
+  #         if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+  #           echo "SONAR_PROJECT_VERSION=${GITHUB_REF_NAME}" >> "$GITHUB_ENV"
+  #         else
+  #           echo "SONAR_PROJECT_VERSION=main-${GITHUB_SHA::8}" >> "$GITHUB_ENV"
+  #         fi
+
+  #     - name: SonarQube scan
+  #       uses: SonarSource/sonarqube-scan-action@v4
+  #       env:
+  #         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+  #       with:
+  #         args: >-
+  #           -Dsonar.projectKey=autobahn.backstage
+  #           -Dsonar.projectVersion=${{ env.SONAR_PROJECT_VERSION }}
+  #           -Dsonar.sources=packages,plugins
+  #           -Dsonar.inclusions=**/*.ts,**/*.tsx
+  #           -Dsonar.test.inclusions=**/*.test.ts,**/*.spec.ts,**/*.test.tsx,**/*.spec.tsx,**/*tests.ts,**/*tests.tsx,**/*testing.ts,**/*testing.tsx
+  #           -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
+  #           -Dsonar.coverage.exclusions=**/__tests__/**,**/*.test.ts,**/*.test.tsx,**/*.spec.ts,**/*.spec.tsx,**/index.ts,**/types.ts,**/*.d.ts,**/setupTests.ts,**/module.ts
+
+  yarn-audit:
+    name: yarn audit
+    if: ${{ vars.CI_ENABLE_YARN_AUDIT != 'false' }}
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd #v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: yarn
+
+      - name: Enable corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: yarn install --immutable --mode=skip-build
+
+      - name: Audit high severity vulnerabilities
+        run: yarn npm audit --all --recursive --severity high --no-deprecations
